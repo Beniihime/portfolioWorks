@@ -1,0 +1,839 @@
+syntax = "proto3";
+package umu;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+
+enum Gender {
+  GENDER_UNSPECIFIED = 0;
+  female = 1;
+  male = 2;
+}
+
+// Service for retrieving raw deanery data
+service DeaneryService {
+  rpc GetStudents (GetStudentsRequest) returns (GetStudentsResponse);
+
+  rpc GetFaculties (GetFacultiesRequest) returns (GetFacultiesResponse);
+
+  rpc GetDepartments (GetDepartmentsRequest) returns (GetDepartmentsResponse);
+  
+  rpc GetProfiles (GetProfilesRequest) returns (GetProfilesResponse);
+  
+  rpc GetSpecialties (GetSpecialtiesRequest) returns (GetSpecialtiesResponse);
+
+  rpc GetEducationLevels (GetEducationLevelsRequest) returns (GetEducationLevelsResponse);
+
+  rpc GetEducationConditions (GetEducationConditionsRequest) returns (GetEducationConditionsResponse);
+
+  rpc GetAcademicYears (GetAcademicYearsRequest) returns (GetAcademicYearsResponse);
+
+  rpc GetGroups (GetGroupsRequest) returns (GetGroupsResponse);
+
+  rpc GetTeachers (GetTeachersRequest) returns (GetTeachersResponse);
+
+  rpc GetPlans (GetPlansRequest) returns (GetPlansResponse);
+
+  rpc GetPlanDetails (GetPlanDetailsRequest) returns (GetPlanDetailsResponse);
+}
+
+// Service for generating aggregated reports and analytics
+service DeaneryReportService {
+  rpc GetAcademicLeaveSolution (GetAcademicLeaveSolutionRequest) returns (GetAcademicLeaveSolutionResponse);
+
+  rpc GetStudentCounts (GetStudentCountsRequest) returns (GetStudentCountsResponse);
+
+  rpc GetTransferAndRestorationCounts (GetTransferAndRestorationCountsRequest) returns (stream TransferAndRestoration);
+
+  rpc GetTeachers (GetTeachersReportRequest) returns (GetTeachersReportResponse);
+}
+
+service ScheduleService {
+  rpc GetLessonTimes (google.protobuf.Empty) returns (GetLessonTimesResponse);
+
+  rpc GetAcademicYears (GetAcademicYearsRequest) returns (GetAcademicYearsResponse);
+
+  rpc GetAuds (GetAudsRequest) returns (GetAudsResponse);
+  
+  rpc GetGroups (ScheduleServiceRequest) returns (GetGroupsResponse);
+
+  rpc GetTeachers (ScheduleServiceRequest) returns (GetTeachersResponse);
+
+  rpc GetSchedule (GetScheduleRequest) returns (GetScheduleResponse);
+}
+
+// Service for retrieving data for a specific student
+service StudentService {
+  rpc GetStudentProfile (StudentRequest) returns (GetStudentProfileResponse);
+
+  rpc GetStudentGrades (StudentRequest) returns (GetStudentGradesResponse);
+
+  rpc GetStudentSchedule (StudentRequest) returns (GetScheduleResponse);
+
+  rpc GetStudentFullInfo (StudentRequest) returns (GetStudentFullInfoResponse);
+
+  rpc GetStudentExamSchedule (StudentRequest) returns (GetStudentExamScheduleResponse);
+
+  rpc GetStudentCurriculum (StudentRequest) returns (GetStudentCurriculumResponse);
+
+  rpc GetStudentTransfers (StudentRequest) returns (GetStudentTransfersResponse);
+}
+
+message StudentRequest {
+  string email = 1; // Почта студента (основной идентификатор)
+  optional int32 studentId = 2; // Код студента (альтернатива email)
+  optional StudentScheduleFilter schedule_filter = 3; // Фильтр расписания
+  optional StudentGradesFilter grades_filter = 4; // Фильтр оценок
+  optional CurriculumFilter curriculum_filter = 5; // Фильтр учебных планов
+  // include — расшифровки справочников для запрошенных данных.
+  // Для GetStudentCurriculum: "ObjectType" (тип объекта), "PracticeType" (вид практики).
+  // Без include возвращаются *_id, с include — объект с id и названием.
+  // Enum не используется: смена типа поля сломала бы уже использующие системы.
+  repeated string include = 6;
+}
+
+enum CurriculumAssessment {
+  CURRICULUM_ASSESSMENT_ANY = 0; // Без фильтра по типу контроля
+  CURRICULUM_ASSESSMENT_EXAM = 1; // Только дисциплины с экзаменом
+  CURRICULUM_ASSESSMENT_CREDIT = 2; // Только дисциплины с зачётом
+}
+
+enum CurriculumElective {
+  CURRICULUM_ELECTIVE_ALL = 0; // Все предметы
+  CURRICULUM_ELECTIVE_ONLY = 1; // Только предметы по выбору
+  CURRICULUM_ELECTIVE_REQUIRED = 2; // Только обязательные предметы
+}
+
+message CurriculumFilter {
+  optional string discipline = 1; // Поиск по названию дисциплины (подстрока, регистронезависимо)
+  optional int32 course = 2; // Курс
+  optional int32 semester = 3; // Семестр
+  optional CurriculumAssessment assessment = 4; // Тип контроля: зачёт или экзамен
+  optional CurriculumElective elective = 5; // Предметы по выбору: да/нет/все
+}
+
+message StudentScheduleFilter {
+  google.protobuf.Timestamp from_date = 1;
+  google.protobuf.Timestamp to_date = 2;
+}
+
+message StudentGradesFilter {
+  optional int32 semester = 1; // Явный семестр
+  bool latest_semester = 2; // Только самый свежий (Год, Семестр) для каждого студента
+  google.protobuf.Timestamp from_date = 3; // По Дата_Экзамена ведомости
+  google.protobuf.Timestamp to_date = 4;
+  optional string discipline = 5; // Поиск по названию предмета
+}
+
+message StudentRecord {
+  int32 id = 1;
+  string name = 2;
+  string surname = 3;
+  string patronymic = 4;
+  google.protobuf.Timestamp birthdate = 5;
+  string gradeBook = 6;
+  int32 enrollmentYear = 7; // Год поступления
+  string studyForm = 8; // Форма обучения
+  string educationConditions = 9; // Условия обучения
+  oneof status_oneof {
+    StudentStatus status = 10;
+    int32 status_id = 11;
+  }
+  oneof group_oneof {
+    Group group = 12;
+    int32 group_id = 13;
+  }
+  oneof specialty_oneof {
+    Specialty specialty = 14;
+    int32 specialty_id = 15;
+  }
+  oneof level_oneof {
+    EducationLevel level = 16;
+    int32 level_id = 17;
+  }
+  optional string email = 18;
+  optional string phone = 19;
+  optional string mobile = 20;
+  optional string registrationAddress = 21;
+  optional string residenceAddress = 22;
+  optional Dormitory dormitory = 23;
+  optional string nationality = 24;
+  optional string citizenship = 25;
+}
+
+message GetStudentProfileResponse {
+  repeated StudentRecord students = 1; // Все записи человека по email (включая выпускников)
+}
+
+message ControlPoint {
+  int32 id = 1;
+  int32 number = 2;
+  string name = 3;
+  google.protobuf.Timestamp date = 4;
+  int32 weight = 5; // Вес_КТ
+  int32 weight_lectures = 6;
+  int32 weight_labs = 7;
+  int32 weight_practice = 8;
+  int32 weight_other = 9;
+  int32 rating_for_2 = 10;
+  int32 rating_for_3 = 11;
+  int32 rating_for_4 = 12;
+  int32 rating_for_5 = 13;
+  int32 rating_lectures = 14;
+  int32 rating_labs = 15;
+  int32 rating_practice = 16;
+  int32 rating_other = 17;
+  int32 rating_total = 18;
+}
+
+message GradeValue {
+  int32 value = 1;        // Код шкалы оценок
+  string text = 2;        // Оценка ("Отлично")
+  string description = 3; // Описание
+  string short_text = 4;  // Сокращение ("Отл")
+}
+
+message Grade {
+  int32 vedomost_id = 1;
+  string discipline = 2;
+  int32 course = 3;
+  int32 semester = 4;
+  int32 session = 5;
+  string year = 6;
+  string vedomost_type = 7;
+  string teacher = 8;
+  google.protobuf.Timestamp exam_date = 9;
+  repeated ControlPoint control_points = 10;
+  GradeValue grade = 11;
+  GradeValue exam_grade = 12;
+  GradeValue total = 13;
+  int32 total_percent = 14;
+}
+
+message StudentGrades {
+  int32 student_id = 1;
+  repeated Grade grades = 2;
+  int32 current_semester = 3; // Последний семестр
+  string current_year = 4;    // Последний год
+  repeated int32 semesters = 5; // Полный список семестров (по возрастанию)
+}
+
+message GetStudentGradesResponse {
+  repeated StudentGrades students = 1;
+}
+
+message GetStudentFullInfoResponse {
+  repeated StudentRecord students = 1;
+  repeated StudentGrades grades = 2;
+  repeated Schedule schedule = 3;
+}
+
+message ExamItem {
+  string discipline = 1;
+  int32 semester = 2;
+  string block = 3;
+  int32 control_type = 4; // Тип_Контроля: 1=экзамен, 2=зачёт, 3/4=пересдача
+  string control_type_name = 5;
+  string exam_date = 6; // Дата экзамена (строка "DD.MM.YYYY") или маркер "*"
+  string credit_date = 7; // Дата зачёта
+  string exam_auditorium = 8; // Аудитория + пары экзамена (например "3.408 1-2")
+  string credit_auditorium = 9;
+  string graphics = 10; // Строка недельного графика сессии (Э;*;К;КТ;Пд;Д)
+  string teacher = 11;
+  oneof department_oneof {
+    Department department = 12;
+    int32 department_id = 13;
+  }
+  bool is_resit = 14; // Пересдача (маркер "*")
+  int32 hours = 15;
+  int32 hours_for_exams = 16;
+}
+
+message GetStudentExamScheduleResponse {
+  repeated ExamItem items = 1;
+}
+
+message CurriculumTeacher {
+  int32 teacher_id = 1;
+  string teacher = 2; // ФИО преподавателя
+  int32 subgroup = 3; // Номер подгруппы/варианта (null для всего потока)
+}
+
+message CurriculumHours {
+  int32 hours = 1; // Часы по типу занятий из плана за семестр (не зависят от назначенного преподавателя)
+  repeated CurriculumTeacher teachers = 2; // Назначенные преподаватели (с разбивкой по подгруппам)
+}
+
+message CurriculumSemester {
+  int32 semester = 1;
+  int32 course = 2;
+  int32 hours = 3; // Лек+Прак+Лаб+СамРабота за семестр
+  int32 hours_aud = 4; // Лек+Прак+Лаб
+  CurriculumHours lecture = 5; // Лекции (из ПланыЧасы.Лекций)
+  CurriculumHours practical = 6; // Практики (из ПланыЧасы.Практик)
+  CurriculumHours laboratory = 7; // Лабораторные (из ПланыЧасы.Лабораторных)
+  bool exam = 8; // Экзамен
+  bool credit = 9; // Зачет
+  repeated CurriculumTeacher teachers = 10; // Все назначенные преподаватели семестра
+  bool course_work = 11; // Курсовая работа
+  bool course_project = 12; // Курсовой проект
+}
+
+message CurriculumObjectType {
+  int32 id = 1; // Код типа объекта
+  string name = 2; // Название типа объекта
+}
+
+message CurriculumPracticeType {
+  int32 id = 1; // Код вида практики
+  string name = 2; // Название вида практики
+}
+
+message CurriculumItem {
+  string discipline = 1;
+  string block = 2;
+  bool elective = 3; // Выборная
+  bool additional_elective = 4; // ДополнительнаяВыборная
+  bool facultative = 5; // Факультатив
+  int32 discipline_id = 6;
+  oneof department_oneof {
+    Department department = 7;
+    int32 department_id = 8;
+  }
+  repeated CurriculumSemester semesters = 9; // Детализация по семестрам (1 дисциплина = 1 запись)
+  oneof object_type_oneof {
+    CurriculumObjectType object_type = 10; // Тип объекта; при include = "ObjectType"
+    int32 object_type_id = 11; // Код типа объекта: 1-Модули, 2-Дисциплины, 3-Практики (НИР), 4-Контроль, 5-Блоки по выбору, 6-ГИА
+  }
+  oneof practice_type_oneof {
+    CurriculumPracticeType practice_type = 12; // Вид практики; при include = "PracticeType"
+    int32 practice_type_id = 13; // Код вида практики: 6-Учебная, 7-Производственная, 8-НИР, 72-Преддипломная; 0 — не практика
+  }
+}
+
+message ElectiveGroup {
+  string block = 1;
+  repeated CurriculumItem disciplines = 2;
+}
+
+message GetStudentCurriculumResponse {
+  repeated CurriculumItem curriculum = 1;
+  repeated ElectiveGroup electives = 2; // Предметы по выбору (Выборная=1), сгруппированные по блоку
+}
+
+// Общая информация об учебном плане
+message CurriculumPlan {
+  int32 id = 1;               // КодПлана
+  string name = 2;            // Учебный_План
+  string duration_study = 3;  // Срок обучения
+  int32 discipline_count = 4; // Количество дисциплин в плане
+  int32 total_hours = 5;      // Суммарный объём часов по плану
+  oneof form_oneof {
+    StudyForm form = 6;
+    int32 form_id = 7;
+  }
+  oneof year_oneof {
+    AcademicYear year = 8;
+    string year_name = 9;
+  }
+  oneof specialty_oneof {
+    Specialty specialty = 10;
+    int32 specialty_id = 11;
+  }
+  oneof profile_oneof {
+    Profile profile = 12;
+    int32 profile_id = 13;
+  }
+  oneof level_oneof {
+    EducationLevel level = 14;
+    int32 level_id = 15;
+  }
+  string title = 16;          // Титул (полное название плана)
+}
+
+message GetPlansRequest {
+  optional int32 id = 1;            // КодПлана
+  optional string name = 2;         // Поиск по Учебный_План (подстрока)
+  optional int32 specialty_id = 3;  // Специальность
+  optional int32 profile_id = 4;    // Профиль
+  optional int32 faculty_id = 5;    // Факультет
+  optional int32 course = 6;        // Курс
+  optional string year = 7;         // Учебный год
+  optional int32 limit = 8;
+  optional int32 skip = 9;
+  repeated string include = 10;
+}
+
+message GetPlansResponse {
+  repeated CurriculumPlan plans = 1;
+  int32 total = 2;
+}
+
+message GetPlanDetailsRequest {
+  int32 plan_id = 1;          // КодПлана
+  // include — расшифровки справочников дисциплин.
+  // Возможные значения: "ObjectType" (тип объекта), "PracticeType" (вид практики).
+  // Без include возвращаются *_id, с include — объект с id и названием.
+  // Enum не используется: смена типа поля сломала бы уже использующие системы.
+  repeated string include = 2;
+}
+
+message GetPlanDetailsResponse {
+  CurriculumPlan plan = 1;                 // Общая информация о плане
+  repeated CurriculumItem curriculum = 2;  // Список дисциплин
+  repeated ElectiveGroup electives = 3;    // Предметы по выбору, сгруппированные по блоку
+}
+
+message Transfer {
+  int32 id = 1;
+  string type_name = 2; // Тип_Перемещения
+  google.protobuf.Timestamp date = 3; // Дата_Перемещения
+  google.protobuf.Timestamp date_from = 4; // ДатаС
+  google.protobuf.Timestamp date_to = 5; // ДатаПо
+  string group_from = 6; // Из_Группы
+  string group_to = 7; // В_Группу
+  int32 course_from = 8; // КурсДо
+  int32 course_to = 9; // КурсПосле
+  string note = 10; // Примечание
+  string document = 11; // Документ
+  string study_grounds = 12; // Основания_Обучения
+  string year = 13; // Учебный_год
+}
+
+message GetStudentTransfersResponse {
+  repeated Transfer transfers = 1;
+}
+
+message GetTeachersReportRequest {
+  string year = 1;
+}
+
+message GetTeachersReportResponse {
+  message Teacher {
+    string first_name = 1;
+    string last_name = 2;
+    string patronymic = 3;
+    repeated string discipline = 4;
+    repeated string specialty = 5;
+    string employment_type = 6; // Тип занятости из ПреподавателиКафедры.Совместительство ("ш - штатный", "g - договор ГПХ" и т.п.)
+    repeated string position = 7; // Должности из СправочникДолжности.НазваниеДолжности
+    repeated string degree = 8; // Учёные степени из СправочникУченаяСтепень ("без учёной степени" отбрасывается)
+    repeated string academic_title = 9; // Учёные звания из СправочникУченыеЗвания ("Без учёного звания" отбрасывается)
+    string specialty_education = 10; // Специальность по образованию (БОСпециальность)
+    string qualification = 11; // Квалификация по образованию (БОКвалификация)
+    int32 experience = 12; // Педагогический стаж, лет (ПедСтаж), 0 если не заполнен
+  }
+
+  repeated Teacher result = 1;
+}
+
+message ScheduleServiceRequest {
+  int32 year = 1;
+}
+
+message GetTransferAndRestorationCountsRequest {
+  google.protobuf.Timestamp start_date = 1;
+  google.protobuf.Timestamp end_date = 2;
+}
+
+message TransferAndRestoration {
+  int32 transfer_id = 1;
+  string transfer_type = 2;
+  string document = 3;
+  string note = 4;
+  int32 order_code = 5;
+  google.protobuf.Timestamp transfer_date = 6;
+  // Student/group info
+  string code = 7;
+  string specialty_name = 8;
+  string education_level = 9;
+  string study_form = 10;
+  int32 student_id = 11;
+  google.protobuf.Timestamp created_at = 12;
+}
+
+message GetStudentCountsRequest {
+  // This request is empty as no parameters are needed.
+}
+
+message StudentCountEntry {
+  string code = 1;
+  string specialty_name = 2;
+  string education_level = 3;
+  string study_form = 4;
+  int32 federal_budget = 5;
+  int32 regional_budget = 6;
+  int32 local_budget = 7;
+  int32 commercial = 8;
+  int32 foreigners = 9;
+}
+
+message GetStudentCountsResponse {
+  repeated StudentCountEntry result = 1;
+}
+
+message GetScheduleRequest {
+  oneof filter {
+    int32 group_id = 1;
+    int32 teacher_id = 2;
+    int32 audience = 3;
+  }
+  google.protobuf.Timestamp from_date = 4;
+  google.protobuf.Timestamp to_date = 5;
+  repeated string include = 6;
+}
+
+message DayOfWeek {
+  int32 number = 1;
+  string name = 2;
+}
+
+message Schedule {
+  int32 id = 1;
+  int32 week_type = 2;
+  int32 lesson_number = 3;
+  oneof day_of_week_oneof {
+    DayOfWeek day_of_week = 4;
+    int32 day_of_week_number = 12;
+  }
+  google.protobuf.Timestamp date = 5;
+  string discipline = 6;
+  oneof teacher_oneof {
+    Teacher teacher = 7;
+    int32 teacher_id = 13;
+  }
+  string classroom = 8;
+  string lesson_type = 9;
+  oneof group_oneof {
+    Group group = 10;
+    int32 group_id = 14;
+  }
+  oneof lesson_time_oneof {
+    LessonTime lesson_time = 11;
+    int32 lesson_time_number = 15;
+  }
+}
+
+message GetScheduleResponse {
+  repeated Schedule schedule = 1;
+}
+
+message LessonTime {
+  int32 id = 1;
+  int32 number = 2;
+  string start = 3;
+  string end = 4;
+}
+
+message GetLessonTimesResponse {
+  repeated LessonTime lesson_times = 1;
+}
+
+message GetFacultiesRequest {
+  optional bool active = 1;
+  optional string name = 2;
+}
+
+message Faculty {
+  int32 id = 1;
+  string name = 2;
+  string abbreviation = 3;
+  bool active = 4;
+}
+
+message GetFacultiesResponse {
+  repeated Faculty faculties = 1;
+}
+
+message GetDepartmentsRequest {
+  optional int32 faculty_id = 1;
+  optional string name = 2;
+}
+
+message Department {
+  int32 id = 1;
+  string name = 2;
+  string abbreviation = 3;
+}
+
+message GetDepartmentsResponse {
+  repeated Department departments = 1;
+}
+
+message GetProfilesRequest {
+  optional int32 id = 1;
+  optional int32 faculty_id = 2;
+  optional int32 department_id = 3;
+  optional string name = 4;
+  optional string abbreviation = 5;
+  repeated string include = 6;
+}
+
+message Profile {
+  int32 id = 1;
+  string name = 2;
+  oneof specialty_oneof {
+    Specialty specialty = 3;
+    int32 specialty_id = 4;
+  }
+}
+
+message GetProfilesResponse {
+  repeated Profile profiles = 1;
+}
+
+message GetSpecialtiesRequest {
+  optional int32 id = 1;
+  optional int32 faculty_id = 2;
+  optional int32 department_id = 3;
+  optional string name = 4;
+  optional string abbreviation = 5;
+  repeated string include = 6;
+}
+
+message Specialty {
+  int32 id = 1;
+  string code = 2;
+  string name = 3;
+  string abbreviation = 4;
+  oneof faculty_oneof {
+    Faculty faculty = 5;
+    int32 faculty_id = 8;
+  }
+  oneof department_oneof {
+    Department department = 6;
+    int32 department_id = 9;
+  }
+  oneof level_oneof {
+    EducationLevel level = 7;
+    int32 level_id = 10;
+  }
+}
+
+message GetSpecialtiesResponse {
+  repeated Specialty specialties = 1;
+}
+
+message GetAcademicYearsRequest {
+  optional bool active = 1;
+}
+
+message AcademicYear {
+  int32 id = 1;
+  string name = 2;
+  int32 year = 3;
+  bool active = 4;
+}
+
+message GetAcademicYearsResponse {
+  repeated AcademicYear academic_years = 1;
+}
+
+message GetGroupsRequest {
+  optional string name = 1;
+  optional int32 course = 2;
+  optional int32 year = 3;
+  optional int32 faculty_id = 4;
+  optional int32 specialty_id = 5;
+  repeated string include = 6;
+  optional bool is_active = 7; // true — только текущий учебный год, false — только не текущий
+}
+
+message GetGroupsResponse {
+  repeated Group groups = 1;
+}
+
+message GetStudentsRequest {
+  // Фильтр для студентов
+  message Filter {
+    optional int32 id = 1; // Код студента
+  
+    optional string fullname = 2; // ФИО
+    // или
+    optional string name = 3; // Имя
+    optional string surname = 4; // Фамилия
+    optional string patronymic = 5; // Отчество
+  
+    optional string email = 6; // Почта
+    optional string phone = 7; // Телефон
+    optional string passport = 8; // Серия/номер паспорта
+  
+    optional string gradeBook = 9; // Номер зачетной книжки
+    optional google.protobuf.Timestamp birthdate = 10; // Дата рождения
+  
+    optional string groupName = 11; // Название группы
+  }
+
+  optional int32 limit = 1;
+  optional int32 skip = 2;
+  optional Filter filter = 3;
+  repeated string include = 4;
+}
+
+message GetStudentsResponse {
+  repeated Student result = 1; // Список студентов
+  int32 total = 2; // Общее количество студентов
+}
+
+message GetAcademicLeaveSolutionRequest {
+  optional int32 limit = 1;
+  optional int32 skip = 2;
+}
+
+message GetAcademicLeaveSolutionResponse {
+  repeated AcademicLeaveSolution result = 1;
+  int32 total = 2;
+}
+
+
+message StudentStatus {
+  int32 id = 1;
+  string name = 2;
+  string abbreviation = 3;
+  string description = 4;
+}
+
+message IdentityDocument {
+  string type = 1;
+  string number = 2;
+  google.protobuf.Timestamp dateIssue = 3;
+  string issuedBy = 4;
+}
+
+message Dormitory {
+  int32 number = 1;
+  string room = 2;
+}
+
+// Студент
+message Student {
+  int32 id = 1;
+
+  string name = 2;
+  string surname = 3;
+  string patronymic = 4;
+
+  optional Gender gender = 5;
+
+  string email = 6;
+  string phone = 7;
+  IdentityDocument identityDocument = 8;
+  string registrationAddress = 17;
+  string residenceAddress = 18;
+  optional Dormitory dormitory = 19;
+  string gradeBook = 9;
+  google.protobuf.Timestamp birthdate = 10;
+
+  oneof status_oneof {
+    StudentStatus status = 11;
+    int32 status_id = 13;
+  }
+
+  oneof group_oneof {
+    Group group = 12;
+    int32 group_id = 14;
+  }
+
+  oneof education_conditions_oneof {
+    EducationConditions education_conditions = 15;
+    int32 education_conditions_id = 16;
+  }
+}
+
+message StudyForm {
+  int32 id = 1;
+  string name = 2;
+  string abbreviation = 3;
+  string prefix = 4;
+}
+
+// Учебная группа
+message Group {
+  int32 id = 1;
+  string name = 2;
+  int32 course = 3;
+  string durationStudy = 4; // Срок обучения
+  oneof form_oneof {
+    StudyForm form = 5; // Форма обучения
+    int32 form_id = 9;
+  }
+  oneof year_oneof {
+    AcademicYear year = 6; // Учебный год
+    string year_name = 10;
+  }
+  oneof specialty_oneof {
+    Specialty specialty = 7;
+    int32 specialty_id = 11;
+  }
+  oneof profile_oneof {
+    Profile profile = 8;
+    int32 profile_id = 12;
+  }
+  oneof plan_oneof {
+    CurriculumPlan plan = 13; // Учебный план (подробности)
+    int32 plan_id = 14;       // КодПлана
+  }
+  bool is_active = 15; // Признак активной записи (текущий учебный год)
+}
+
+message AcademicLeaveSolution {
+  string gradeBook = 1;
+  string commissionProtocol = 2;
+  string commissionSolution = 3;
+  string academicLeaveDocument = 4;
+}
+
+message GetTeachersRequest {
+  repeated string include = 1;
+}
+
+message Teacher {
+  int32 id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string patronymic = 4;
+  string title = 5;
+  string degree = 6;
+  string other = 7;
+  optional Gender gender = 8;
+}
+
+message GetTeachersResponse {
+  repeated Teacher teachers = 1;
+}
+
+message GetEducationLevelsRequest {}
+
+message EducationLevel {
+  int32 id = 1;
+  string name = 2;
+}
+
+message GetEducationLevelsResponse {
+  repeated EducationLevel education_levels = 1;
+}
+
+message GetEducationConditionsRequest {
+  optional bool active = 1;
+}
+
+message EducationConditions {
+  int32 id = 1;
+  string name = 2;
+  string abbreviation = 3;
+  bool active = 4;
+}
+
+message GetEducationConditionsResponse {
+  repeated EducationConditions result = 1;
+}
+
+message GetAudsRequest {
+  optional google.protobuf.Timestamp date = 1;
+  optional int32 lesson_number = 2;
+}
+
+message GetAudsResponse {
+  repeated string result = 1;
+}

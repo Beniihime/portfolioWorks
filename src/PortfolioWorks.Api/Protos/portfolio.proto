@@ -1,0 +1,23 @@
+syntax = "proto3";
+option csharp_namespace = "PortfolioWorks.Api";
+package portfolio;
+
+import "google/protobuf/timestamp.proto";
+
+service PortfolioService {
+  rpc GetDisciplines (GetDisciplinesRequest) returns (GetDisciplinesResponse);
+  // Файл передаётся чанками: метаданные (student_email, discipline_id,
+  // file_name, content_type) задаются в первом сообщении, в следующих
+  // достаточно content. Если метаданные переданы повторно — они должны совпадать.
+  rpc UploadWork (stream UploadWorkRequest) returns (UploadWorkResponse);
+  rpc ListWorks (ListWorksRequest) returns (ListWorksResponse);
+}
+
+message GetDisciplinesRequest { string student_email = 1; }
+message Discipline { int32 id = 1; string name = 2; repeated int32 semesters = 3; }
+message GetDisciplinesResponse { repeated Discipline disciplines = 1; }
+message UploadWorkRequest { string student_email = 1; int32 discipline_id = 2; string file_name = 3; string content_type = 4; bytes content = 5; }
+message UploadWorkResponse { string id = 1; string error = 2; }
+message ListWorksRequest { string student_email = 1; }
+message UploadedWork { string id = 1; Discipline discipline = 2; string file_name = 3; string content_type = 4; int64 size_bytes = 5; google.protobuf.Timestamp uploaded_at = 6; }
+message ListWorksResponse { repeated UploadedWork works = 1; }

@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+*.user
+*.suo
+TestResults/
+.env
+.env.*
+!.env.example
+appsettings.json
+secrets*.json
+data/uploads/
+uploads/
+.DS_Store
+*S.md
