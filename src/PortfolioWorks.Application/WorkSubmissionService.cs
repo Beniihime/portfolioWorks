@@ -28,9 +28,13 @@ public sealed class WorkSubmissionService : IWorkSubmissionService
             return UploadWorkResult.Failure("Discipline id must be positive.");
 
         var studentEmail = StudentEmail.Normalize(request.StudentEmail);
-        var curriculum = await _curriculumProvider.GetCurriculumAsync(studentEmail, cancellationToken);
-        if (!curriculum.Any(x => x.Id == request.DisciplineId))
+        var groups = await _curriculumProvider.GetCurriculumAsync(studentEmail, null, includeGrades: false,
+            cancellationToken);
+        var discipline = groups.SelectMany(group => group.Disciplines).FirstOrDefault(x => x.Id == request.DisciplineId);
+        if (discipline is null)
             return UploadWorkResult.Failure("The selected discipline is not in the student's curriculum.");
+        if (!discipline.IsCourseWorkOrPractice)
+            return UploadWorkResult.Failure("Only course works, course projects and practices can be uploaded.");
 
         var fileName = Path.GetFileName(request.FileName);
         if (string.IsNullOrWhiteSpace(fileName) || fileName.Length > MaximumFileNameLength || fileName != request.FileName)

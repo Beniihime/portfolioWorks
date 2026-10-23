@@ -15,25 +15,48 @@ services:
       timeout: 5s
       retries: 10
 
+  minio:
+    # Официальные образы MinIO удалены из Docker Hub и Quay в 2026 году.
+    # Silo — совместимый форк: тот же S3 API, переменные окружения и формат данных.
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   api:
     build:
       context: .
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__PortfolioWorks: Host=postgres;Port=5432;Database=portfolio;Username=portfolio;Password=${POSTGRES_PASSWORD}
-      Storage__RootPath: /app/data/uploads
+      Storage__Minio__Endpoint: minio:9000
+      Storage__Minio__AccessKey: ${MINIO_ROOT_USER}
+      Storage__Minio__SecretKey: ${MINIO_ROOT_PASSWORD}
+      Storage__Minio__Bucket: portfolio-works
+      Storage__Minio__UseSsl: "false"
       Umu__Address: ${UMU_ADDRESS}
       Umu__Authorization: ${UMU_AUTHORIZATION}
     extra_hosts:
-      - host.docker.internal:host-gateway # 
+      - host.docker.internal:host-gateway
     ports:
       - "8080:8080"
-    volumes:
-      - uploaded-works:/app/data/uploads
 
 volumes:
   postgres-data:
-  uploaded-works:
+  minio-data:

@@ -12,6 +12,9 @@ public sealed class UploadedWorkRepository(PortfolioDbContext dbContext) : IUplo
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public Task<UploadedWork?> GetByIdAsync(Guid id, CancellationToken cancellationToken) =>
+        dbContext.UploadedWorks.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
     public async Task<IReadOnlyCollection<UploadedWork>> GetByStudentEmailAsync(string studentEmail,
         CancellationToken cancellationToken) =>
         await dbContext.UploadedWorks.AsNoTracking()
