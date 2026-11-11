@@ -7,7 +7,7 @@ using PortfolioWorks.Application;
 namespace PortfolioWorks.Api.Services;
 
 public sealed class PortfolioService(IStudentCurriculumProvider curriculumProvider, IWorkSubmissionService workService,
-    IWorkDownloadService downloadService, IStudentIdentityResolver identityResolver,
+    IWorkDownloadService downloadService, IWorkDeletionService deletionService, IStudentIdentityResolver identityResolver,
     IOptions<UploadOptions> uploadOptions, ILogger<PortfolioService> logger)
     : global::PortfolioWorks.Api.PortfolioService.PortfolioServiceBase
 {
@@ -60,39 +60,60 @@ public sealed class PortfolioService(IStudentCurriculumProvider curriculumProvid
         var studentEmail = await ResolveStudentEmailAsync(request.StudentEmail, request.StudentId,
             context.CancellationToken);
         var works = await workService.GetByStudentEmailAsync(studentEmail, context.CancellationToken);
-
-        // Названия дисциплин приходят из УМУ, но список загруженных работ хранится
-        // локально. Недоступность УМУ не должна скрывать уже загруженные файлы.
-        PortfolioWorks.Application.Discipline[] curriculum = [];
-        try
-        {
-            curriculum = (await curriculumProvider.GetCurriculumAsync(studentEmail, null, includeGrades: false,
-                    context.CancellationToken))
-                .SelectMany(group => group.Disciplines)
-                .ToArray();
-        }
-        catch (Exception exception) when (exception is RpcException or HttpRequestException or InvalidOperationException)
-        {
-            logger.LogWarning(exception, "Failed to load curriculum from Umu for {StudentEmail}", studentEmail);
-        }
-
-        var disciplines = curriculum.ToDictionary(x => x.Id);
+        var disciplines = await LoadDisciplinesAsync(studentEmail, context.CancellationToken);
 
         var response = new ListWorksResponse();
-        response.Works.AddRange(works.Select(x =>
+        response.Works.AddRange(works.Select(x => ToProtoWork(x, disciplines)));
+        return response;
+    }
+
+    public override async Task<ListWorksByStudentIdsResponse> ListWorksByStudentIds(
+        ListWorksByStudentIdsRequest request, ServerCallContext context)
+    {
+        var studentIds = request.StudentIds.Distinct().ToArray();
+        if (studentIds.Any(id => id <= 0))
+            throw new RpcException(new Status(StatusCode.InvalidArgument,
+                "student_ids must contain positive ids."));
+        if (studentIds.Length == 0) return new ListWorksByStudentIdsResponse();
+
+        // Недоступность УМУ по одному студенту не должна ломать весь запрос:
+        // такой id останется в ответе с пустым email и без работ.
+        var emails = new Dictionary<int, string?>(studentIds.Length);
+        foreach (var studentId in studentIds)
         {
-            var work = new UploadedWork
+            try
             {
-                Id = x.Id.ToString(),
-                FileName = x.OriginalFileName,
-                ContentType = x.ContentType,
-                SizeBytes = x.SizeBytes,
-                UploadedAt = Timestamp.FromDateTimeOffset(x.UploadedAt)
-            };
-            if (disciplines.TryGetValue(x.DisciplineId, out var discipline))
-                work.Discipline = ToProto(discipline);
-            return work;
-        }));
+                emails[studentId] = await identityResolver.FindEmailAsync(studentId, context.CancellationToken);
+            }
+            catch (RpcException exception) when (exception.StatusCode != StatusCode.Cancelled)
+            {
+                logger.LogWarning(exception, "Failed to resolve student email for {StudentId}", studentId);
+                emails[studentId] = null;
+            }
+        }
+
+        var distinctEmails = emails.Values.OfType<string>().Distinct().ToArray();
+        IReadOnlyCollection<PortfolioWorks.Domain.UploadedWork> works = distinctEmails.Length == 0
+            ? []
+            : await workService.GetByStudentEmailsAsync(distinctEmails, context.CancellationToken);
+        var worksByEmail = works
+            .GroupBy(x => x.StudentEmail)
+            .ToDictionary(group => group.Key,
+                group => (IReadOnlyCollection<PortfolioWorks.Domain.UploadedWork>)group.ToArray());
+
+        var disciplinesByEmail = new Dictionary<string, IReadOnlyDictionary<int, PortfolioWorks.Application.Discipline>>();
+        foreach (var email in distinctEmails)
+            disciplinesByEmail[email] = await LoadDisciplinesAsync(email, context.CancellationToken);
+
+        var response = new ListWorksByStudentIdsResponse();
+        foreach (var (studentId, email) in emails)
+        {
+            var student = new StudentWorks { StudentId = studentId, StudentEmail = email ?? string.Empty };
+            if (email is not null)
+                student.Works.AddRange(worksByEmail.GetValueOrDefault(email, [])
+                    .Select(work => ToProtoWork(work, disciplinesByEmail[email])));
+            response.Students.Add(student);
+        }
         return response;
     }
 
@@ -149,6 +170,19 @@ public sealed class PortfolioService(IStudentCurriculumProvider curriculumProvid
             }, context.CancellationToken);
     }
 
+    public override async Task<DeleteWorkResponse> DeleteWork(DeleteWorkRequest request, ServerCallContext context)
+    {
+        if (!Guid.TryParse(request.WorkId, out var workId))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "work_id must be a valid GUID."));
+
+        var studentEmail = await ResolveStudentEmailAsync(request.StudentEmail, request.StudentId,
+            context.CancellationToken);
+        if (!await deletionService.DeleteAsync(workId, studentEmail, context.CancellationToken))
+            throw new RpcException(new Status(StatusCode.NotFound, "Work is not found."));
+
+        return new DeleteWorkResponse();
+    }
+
     private static StudyGroup ToProto(PortfolioWorks.Application.StudyGroup group,
         IReadOnlyDictionary<int, IReadOnlyCollection<PortfolioWorks.Domain.UploadedWork>> works) => new()
     {
@@ -176,6 +210,22 @@ public sealed class PortfolioService(IStudentCurriculumProvider curriculumProvid
         SizeBytes = work.SizeBytes,
         UploadedAt = Timestamp.FromDateTimeOffset(work.UploadedAt)
     };
+
+    private static UploadedWork ToProtoWork(PortfolioWorks.Domain.UploadedWork work,
+        IReadOnlyDictionary<int, PortfolioWorks.Application.Discipline> disciplines)
+    {
+        var result = new UploadedWork
+        {
+            Id = work.Id.ToString(),
+            FileName = work.OriginalFileName,
+            ContentType = work.ContentType,
+            SizeBytes = work.SizeBytes,
+            UploadedAt = Timestamp.FromDateTimeOffset(work.UploadedAt)
+        };
+        if (disciplines.TryGetValue(work.DisciplineId, out var discipline))
+            result.Discipline = ToProto(discipline);
+        return result;
+    }
 
     private static Discipline ToProto(PortfolioWorks.Application.Discipline discipline) => new()
     {
@@ -208,6 +258,26 @@ public sealed class PortfolioService(IStudentCurriculumProvider curriculumProvid
             ? throw new RpcException(new Status(StatusCode.InvalidArgument,
                 "A valid student_email or student_id is required."))
             : (email, id);
+    }
+
+    private async Task<IReadOnlyDictionary<int, PortfolioWorks.Application.Discipline>> LoadDisciplinesAsync(
+        string studentEmail, CancellationToken cancellationToken)
+    {
+        // Названия дисциплин приходят из УМУ, но список загруженных работ хранится
+        // локально. Недоступность УМУ не должна скрывать уже загруженные файлы.
+        try
+        {
+            return (await curriculumProvider.GetCurriculumAsync(studentEmail, null, includeGrades: false,
+                    cancellationToken))
+                .SelectMany(group => group.Disciplines)
+                .GroupBy(discipline => discipline.Id)
+                .ToDictionary(group => group.Key, group => group.First());
+        }
+        catch (Exception exception) when (exception is RpcException or HttpRequestException or InvalidOperationException)
+        {
+            logger.LogWarning(exception, "Failed to load curriculum from Umu for {StudentEmail}", studentEmail);
+            return new Dictionary<int, PortfolioWorks.Application.Discipline>();
+        }
     }
 
     private async Task<string> ResolveStudentEmailAsync(string studentEmail, int studentId,

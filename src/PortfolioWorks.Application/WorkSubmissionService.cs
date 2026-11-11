@@ -78,6 +78,10 @@ public sealed class WorkSubmissionService : IWorkSubmissionService
 
     public Task<IReadOnlyCollection<UploadedWork>> GetByStudentEmailAsync(string studentEmail, CancellationToken cancellationToken) =>
         _repository.GetByStudentEmailAsync(StudentEmail.Normalize(studentEmail), cancellationToken);
+
+    public Task<IReadOnlyCollection<UploadedWork>> GetByStudentEmailsAsync(
+        IReadOnlyCollection<string> studentEmails, CancellationToken cancellationToken) =>
+        _repository.GetByStudentEmailsAsync(studentEmails, cancellationToken);
 }
 
 public sealed class UploadOptions

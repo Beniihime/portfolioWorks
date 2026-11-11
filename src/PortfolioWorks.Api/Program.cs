@@ -58,6 +58,7 @@ builder.Services.AddSingleton<IMinioClient>(_ => new MinioClient()
 builder.Services.AddSingleton<MinioWorkFileStorage>();
 builder.Services.AddSingleton<IWorkFileStorage>(services => services.GetRequiredService<MinioWorkFileStorage>());
 builder.Services.AddScoped<IWorkDownloadService, WorkDownloadService>();
+builder.Services.AddScoped<IWorkDeletionService, WorkDeletionService>();
 builder.Services.AddScoped<IWorkSubmissionService>(services => new WorkSubmissionService(
     services.GetRequiredService<IUploadedWorkRepository>(),
     services.GetRequiredService<IWorkFileStorage>(),

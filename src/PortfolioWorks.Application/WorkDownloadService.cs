@@ -5,15 +5,9 @@ namespace PortfolioWorks.Application;
 public sealed class WorkDownloadService(IUploadedWorkRepository repository, IWorkFileStorage storage)
     : IWorkDownloadService
 {
-    public async Task<UploadedWork?> FindAsync(Guid workId, string studentEmail, CancellationToken cancellationToken)
-    {
-        var work = await repository.GetByIdAsync(workId, cancellationToken);
+    public Task<UploadedWork?> FindAsync(Guid workId, string studentEmail, CancellationToken cancellationToken) =>
         // Чужую работу не отличаем от несуществующей, чтобы не раскрывать её наличие.
-        return work is not null &&
-               string.Equals(work.StudentEmail, StudentEmail.Normalize(studentEmail), StringComparison.Ordinal)
-            ? work
-            : null;
-    }
+        repository.GetByIdAsync(workId, StudentEmail.Normalize(studentEmail), cancellationToken);
 
     public Task ReadAsync(UploadedWork work, Func<Stream, CancellationToken, Task> write,
         CancellationToken cancellationToken) =>

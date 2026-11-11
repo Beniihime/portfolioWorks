@@ -44,8 +44,12 @@ public interface IStudentIdentityResolver
 public interface IUploadedWorkRepository
 {
     Task AddAsync(UploadedWork work, CancellationToken cancellationToken);
-    Task<UploadedWork?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
+    // Возвращает работу только если она принадлежит этому студенту.
+    Task<UploadedWork?> GetByIdAsync(Guid id, string studentEmail, CancellationToken cancellationToken);
     Task<IReadOnlyCollection<UploadedWork>> GetByStudentEmailAsync(string studentEmail, CancellationToken cancellationToken);
+    Task<IReadOnlyCollection<UploadedWork>> GetByStudentEmailsAsync(IReadOnlyCollection<string> studentEmails,
+        CancellationToken cancellationToken);
+    Task DeleteAsync(Guid id, CancellationToken cancellationToken);
 }
 
 public interface IWorkFileStorage
@@ -68,6 +72,12 @@ public interface IWorkDownloadService
         CancellationToken cancellationToken);
 }
 
+public interface IWorkDeletionService
+{
+    // false — работа не найдена или принадлежит другому студенту.
+    Task<bool> DeleteAsync(Guid workId, string studentEmail, CancellationToken cancellationToken);
+}
+
 public sealed record UploadWorkRequest(string StudentEmail, int DisciplineId, string FileName, string ContentType,
     Stream Content);
 
@@ -81,6 +91,8 @@ public interface IWorkSubmissionService
 {
     Task<UploadWorkResult> UploadAsync(UploadWorkRequest request, CancellationToken cancellationToken);
     Task<IReadOnlyCollection<UploadedWork>> GetByStudentEmailAsync(string studentEmail, CancellationToken cancellationToken);
+    Task<IReadOnlyCollection<UploadedWork>> GetByStudentEmailsAsync(IReadOnlyCollection<string> studentEmails,
+        CancellationToken cancellationToken);
 }
 
 public static class StudentEmail

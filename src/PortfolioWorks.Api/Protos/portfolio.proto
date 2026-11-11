@@ -12,9 +12,15 @@ service PortfolioService {
   // они должны совпадать.
   rpc UploadWork (stream UploadWorkRequest) returns (UploadWorkResponse);
   rpc ListWorks (ListWorksRequest) returns (ListWorksResponse);
+  // Работы сразу по нескольким студентам. Один элемент ответа на каждый
+  // уникальный student_id; если email студента не удалось определить,
+  // student_email пустой, а works — пустой список.
+  rpc ListWorksByStudentIds (ListWorksByStudentIdsRequest) returns (ListWorksByStudentIdsResponse);
   // Серверный стриминг: в первом сообщении приходят file_name, content_type,
   // size_bytes (и, возможно, первая часть content), в следующих — только content.
   rpc DownloadWork (DownloadWorkRequest) returns (stream DownloadWorkResponse);
+  // Удаляет работу, если она принадлежит указанному студенту.
+  rpc DeleteWork (DeleteWorkRequest) returns (DeleteWorkResponse);
 }
 
 message GetDisciplinesRequest {
@@ -82,6 +88,15 @@ message ListWorksRequest {
 }
 message UploadedWork { string id = 1; Discipline discipline = 2; string file_name = 3; string content_type = 4; int64 size_bytes = 5; google.protobuf.Timestamp uploaded_at = 6; }
 message ListWorksResponse { repeated UploadedWork works = 1; }
+message ListWorksByStudentIdsRequest {
+  repeated int32 student_ids = 1;
+}
+message StudentWorks {
+  int32 student_id = 1;
+  string student_email = 2;
+  repeated UploadedWork works = 3;
+}
+message ListWorksByStudentIdsResponse { repeated StudentWorks students = 1; }
 message DownloadWorkRequest {
   string work_id = 1;
   // Достаточно одного из полей: student_email или student_id.
@@ -94,3 +109,10 @@ message DownloadWorkResponse {
   int64 size_bytes = 3;
   bytes content = 4;
 }
+message DeleteWorkRequest {
+  string work_id = 1;
+  // Достаточно одного из полей: student_email или student_id.
+  string student_email = 2;
+  optional int32 student_id = 3;
+}
+message DeleteWorkResponse {}
